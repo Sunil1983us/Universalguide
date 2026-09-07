@@ -4,6 +4,104 @@ All notable changes to the SDD Framework are documented here.
 
 ---
 
+## [3.7.4] — 2026-08-28 (Fix: sdd jira push 404'd against Jira Server/Data Center)
+
+A user reported `sdd jira push --level epic` failing with HTTP 404 while
+running via GitHub Copilot. Root cause: `JiraClient.search()` — called by
+`find_by_label()` for every idempotency lookup, i.e. every `--level
+epic/story/task/chg` push — always posted to
+`/rest/api/{version}/search/jql`. That endpoint replaced Jira Cloud's
+deprecated `GET /search` (410 Gone) but was never added to Jira
+Server/Data Center, which still only has the classic
+`/rest/api/2/search`. `deployment='server'` correctly switched the API
+version prefix (2 vs 3) but `search()` never branched the endpoint path
+itself, so every Server/DC search 404'd — breaking every Jira push level,
+not just Epic.
+
+The same report also asked whether the Epic's Jira project comes from
+`integrations.yml` — yes: `JiraConfig.key_for('feature')` resolves the
+project key from `integrations.yml`'s `jira.project_key` (or a
+`project_keys.feature`/`epic` override) on every push, and the Epic issue
+itself is found fresh each time via a live JQL label search
+(`sdd-feature:{feature}`), never a cached key file.
+
+### Fixed
+
+- `JiraClient.search()` now posts to `/search/jql` only for Cloud
+  (`_api_version == "3"`); Server/Data Center posts to plain `/search`
+  instead — same request/response shape, just the endpoint Server/DC
+  actually has.
+
+### Verified
+
+- cli-python pytest 1151/1151 (1149 unchanged + 2 new — confirmed the new
+  Server/DC test fails against the pre-fix code reproducing the exact
+  404-causing URL, and passes against the fix).
+- ruff check/format clean; `check-migration-parity.py` clean (170 entries).
+
+---
+
+## [3.7.3] — 2026-08-28 (Docs: Team Setup checklist for multi-contributor, multi-feature projects)
+
+A user walked through a real multi-team risk: contributor A pushes with
+`project.feature: feature-1` committed, contributor B is mid-work on
+`feature-2` in the same clone/branch, and B's plain `git pull` silently
+flips B's local `manifest.yml` to `feature-1` too — nothing errors, B's
+next command just trusts the new value. The existing "Working on Multiple
+Features" section already recommended `git worktree` per feature, but
+didn't spell out why that's the actual fix (a `git pull` only ever affects
+your own branch/worktree) versus the Feature Drift Check, which only
+catches drift within one already-running AI conversation.
+
+### Added
+
+- New "Team Setup — Multiple Contributors, Multiple Features" subsection
+  in all 5 non-micro packs' `HOW-TO-USE.md`, right after "Working on
+  Multiple Features": a 6-step checklist covering worktree-per-feature
+  setup, keeping `project.feature`/`context_file`/`feature_display_name`
+  together, why `git pull` is branch-scoped, the Feature Drift Check's
+  actual limits, resolving a `manifest.yml` merge conflict on the
+  `project.feature` line, and detecting/repairing drift that already
+  happened via `git log -p` on `manifest.yml`.
+
+### Verified
+
+- Docs-only change — no manifest schema or CLI behavior change.
+- New subsection confirmed byte-identical across all 5 packs.
+- cli-python pytest 1149/1149 (no test changes); ruff check/format clean;
+  `check-migration-parity.py` clean.
+
+---
+
+## [3.7.2] — 2026-08-28 (Fix: sdd confluence push --doc constitution wrongly warned about a collision)
+
+`sdd confluence push --doc constitution` (and other PROJECT_SCOPED_DOCS:
+`runbook`, `data-model`, `security-design`, `api-spec`) wrongly warned
+about overwriting another feature's page in a multi-feature project and
+refused to push without `--force`. `feature_collision_warning()` only
+checked "does the title contain the feature name" — which project-scoped
+docs' titles never do on purpose, since they're deliberately one shared
+page across every feature — so it always flagged them as a collision
+risk, even though there's no other feature's page to actually collide
+with. Reported live: a user saw an AI agent's own reasoning trace get
+confused by this warning mid-session and skip pushing the constitution
+entirely.
+
+### Fixed
+
+- `feature_collision_warning()` gained a `doc` parameter and
+  short-circuits to "no warning" when `doc` is one of the
+  `PROJECT_SCOPED_DOCS`, before the feature-name check even runs.
+
+### Verified
+
+- cli-python pytest 1149/1149 (1146 unchanged + 3 new — confirmed all 3
+  actually fail against the pre-fix code, reproducing the exact warning
+  text the user saw, and pass against the fix); ruff check/format clean;
+  mypy clean; bandit 0 issues.
+
+---
+
 ## [3.7.1] — 2026-08-28 (Fix: unencoded file I/O mangled non-ASCII content on Windows)
 
 A user reported an em-dash in a `/create-context`-generated `context.md`
