@@ -86,6 +86,32 @@ class TestSearch:
         assert client.search("project = MYPROJ") == []
 
 
+class TestSearchServerDeployment:
+    """Regression: /search/jql is Cloud-only -- Server/Data Center never
+    got it (its classic /rest/api/2/search endpoint was never deprecated).
+    Before this fix, search() always posted to .../search/jql regardless
+    of deployment, so every idempotency lookup (--level epic/story/task/chg)
+    404'd against a real Server/DC instance. Reported live: a user's
+    `sdd jira push --level epic` failed with HTTP 404."""
+
+    def test_server_deployment_posts_to_plain_search_not_search_jql(self):
+        session = MagicMock()
+        response = MagicMock()
+        response.json.return_value = {"issues": []}
+        response.raise_for_status.return_value = None
+        session.post.return_value = response
+        client = JiraClient(session, "https://jira.internal", deployment="server")
+        client.search("project = MYPROJ")
+        url = session.post.call_args.args[0]
+        assert url == "https://jira.internal/rest/api/2/search"
+
+    def test_cloud_deployment_still_posts_to_search_jql(self):
+        client, session = _client_with_mock_session({"issues": []})
+        client.search("project = MYPROJ")
+        url = session.post.call_args.args[0]
+        assert url == "https://example.atlassian.net/rest/api/3/search/jql"
+
+
 class TestFindByLabel:
     def test_builds_jql_with_project_and_label(self):
         client, session = _client_with_mock_session({"issues": []})

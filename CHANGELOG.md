@@ -4,6 +4,43 @@ All notable changes to the SDD Framework are documented here.
 
 ---
 
+## [3.7.4] — 2026-08-28 (Fix: sdd jira push 404'd against Jira Server/Data Center)
+
+A user reported `sdd jira push --level epic` failing with HTTP 404 while
+running via GitHub Copilot. Root cause: `JiraClient.search()` — called by
+`find_by_label()` for every idempotency lookup, i.e. every `--level
+epic/story/task/chg` push — always posted to
+`/rest/api/{version}/search/jql`. That endpoint replaced Jira Cloud's
+deprecated `GET /search` (410 Gone) but was never added to Jira
+Server/Data Center, which still only has the classic
+`/rest/api/2/search`. `deployment='server'` correctly switched the API
+version prefix (2 vs 3) but `search()` never branched the endpoint path
+itself, so every Server/DC search 404'd — breaking every Jira push level,
+not just Epic.
+
+The same report also asked whether the Epic's Jira project comes from
+`integrations.yml` — yes: `JiraConfig.key_for('feature')` resolves the
+project key from `integrations.yml`'s `jira.project_key` (or a
+`project_keys.feature`/`epic` override) on every push, and the Epic issue
+itself is found fresh each time via a live JQL label search
+(`sdd-feature:{feature}`), never a cached key file.
+
+### Fixed
+
+- `JiraClient.search()` now posts to `/search/jql` only for Cloud
+  (`_api_version == "3"`); Server/Data Center posts to plain `/search`
+  instead — same request/response shape, just the endpoint Server/DC
+  actually has.
+
+### Verified
+
+- cli-python pytest 1151/1151 (1149 unchanged + 2 new — confirmed the new
+  Server/DC test fails against the pre-fix code reproducing the exact
+  404-causing URL, and passes against the fix).
+- ruff check/format clean; `check-migration-parity.py` clean (170 entries).
+
+---
+
 ## [3.7.3] — 2026-08-28 (Docs: Team Setup checklist for multi-contributor, multi-feature projects)
 
 A user walked through a real multi-team risk: contributor A pushes with

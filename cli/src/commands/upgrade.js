@@ -5425,6 +5425,44 @@ export const MIGRATIONS = [
       'docs-only); ruff check/format clean',
     ],
   },
+  {
+    from: '3.7.3',
+    to:   '3.7.4',
+    description: "Fix: sdd jira push (any --level) 404'd against Jira Server/Data Center -- JiraClient.search() always posted to the Cloud-only /search/jql endpoint regardless of deployment",
+    notes: [
+      'Reported live: a user\'s \'sdd jira push --level epic\' failed ' +
+      'with HTTP 404. Root cause: JiraClient.search() -- called by ' +
+      'find_by_label() for every idempotency lookup, i.e. every ' +
+      '--level epic/story/task/chg push -- always posted to ' +
+      '/rest/api/{version}/search/jql. That endpoint replaced Cloud\'s ' +
+      'deprecated GET /search (410 Gone) but was never added to ' +
+      'Server/Data Center, which still only has the classic ' +
+      '/rest/api/2/search. deployment=\'server\' correctly switched the ' +
+      'API version prefix (2 vs 3) but search() never branched the ' +
+      'path itself, so every Server/DC search 404\'d',
+      'search() now posts to /search/jql only when _api_version == ' +
+      '\'3\' (Cloud); Server/DC (_api_version == \'2\') posts to plain ' +
+      '/search instead -- same request/response shape, just the ' +
+      'endpoint Server/DC actually has',
+      'Also clarifies, for the \'is the epic\'s project read from ' +
+      'integrations.yml\' question that prompted digging into this: ' +
+      'yes -- JiraConfig.key_for(\'feature\') resolves the Jira project ' +
+      'key from integrations.yml\'s jira.project_key (or a ' +
+      'project_keys.feature/epic override) every push; the actual Epic ' +
+      'issue is found fresh each time via a live JQL label search ' +
+      '(find_by_label, sdd-feature:{feature}), never a cached key file ' +
+      '-- so a stale local key can\'t be the cause of a 404 here, only ' +
+      'the wrong endpoint could',
+      'This Node CLI has no Jira integration of its own ' +
+      '(scaffolding-only by design) and is unaffected by this fix ' +
+      'beyond the version stamp -- this migration entry exists so both ' +
+      'CLIs report the same sdd_version chain',
+      'Verified: cli-python pytest 1151/1151 (1149 unchanged + 2 new ' +
+      '-- confirmed the new Server/DC test fails against the pre-fix ' +
+      'code with the exact 404-causing URL and passes against the ' +
+      'fix); ruff check/format clean',
+    ],
+  },
 ];
 
 // Rare migrations that must transform manifest.yml beyond stamping

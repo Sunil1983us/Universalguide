@@ -39,16 +39,24 @@ class JiraClient:
     def search(
         self, jql: str, fields: list[str] | None = None, max_results: int = 50
     ) -> list[dict]:
-        """Run a JQL search. Uses POST /rest/api/3/search/jql -- Atlassian
-        deprecated the old GET /rest/api/3/search endpoint (removed,
-        returns 410 Gone) in favor of this one. Only the first page is
-        fetched (no nextPageToken follow-up): every caller in this
-        codebase is an idempotency lookup expecting 0-1 matches, well
-        under max_results, so pagination has never been needed here."""
+        """Run a JQL search. Cloud (v3) uses POST /rest/api/3/search/jql --
+        Atlassian deprecated the old GET /rest/api/3/search endpoint
+        (removed, returns 410 Gone) in favor of this one, but /search/jql
+        is itself Cloud-only: it does not exist on Server/Data Center,
+        which never deprecated its classic /rest/api/2/search endpoint
+        (confirmed against a real Data Center instance -- posting to
+        .../2/search/jql there returns a clean 404, breaking every
+        idempotency lookup, i.e. every --level epic/story/task/chg push,
+        the moment `deployment='server'` is set). Server/DC therefore
+        posts to plain /search instead. Only the first page is fetched
+        (no nextPageToken follow-up): every caller in this codebase is an
+        idempotency lookup expecting 0-1 matches, well under max_results,
+        so pagination has never been needed here."""
         payload: dict = {"jql": jql, "maxResults": max_results}
         if fields:
             payload["fields"] = fields
-        r = self._s.post(self._api("/search/jql"), json=payload)
+        path = "/search/jql" if self._api_version == "3" else "/search"
+        r = self._s.post(self._api(path), json=payload)
         r.raise_for_status()
         return r.json().get("issues", [])
 
